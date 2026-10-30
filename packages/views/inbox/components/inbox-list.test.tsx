@@ -1,7 +1,8 @@
 import { forwardRef, useImperativeHandle } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { InboxItem } from "@multica/core/types";
+import type { NestedSubIssue } from "@multica/core/inbox/hierarchy";
+import type { InboxItem, Issue } from "@multica/core/types";
 import { InboxList } from "./inbox-list";
 
 // jsdom has no layout, so the real Virtuoso measures a 0-height viewport and
@@ -44,15 +45,28 @@ vi.mock("./inbox-list-item", () => ({
     item,
     isSelected,
     onClick,
+    subIssueToggle,
   }: {
     item: InboxItem;
     isSelected: boolean;
     onClick: () => void;
+    subIssueToggle?: React.ReactNode;
   }) => (
-    <button type="button" data-selected={isSelected} onClick={onClick}>
-      {item.id}
-    </button>
+    <>
+      <button type="button" data-selected={isSelected} onClick={onClick}>
+        {item.id}
+      </button>
+      {subIssueToggle}
+    </>
   ),
+}));
+
+vi.mock("./inbox-sub-issue-group", () => ({
+  InboxSubIssueToggle: ({ count, onToggle }: { count: number; onToggle: () => void }) => (
+    <button type="button" onClick={onToggle}>{`Toggle ${count}`}</button>
+  ),
+  InboxSubIssueGroup: ({ subIssues, expanded }: { subIssues: NestedSubIssue[]; expanded: boolean }) =>
+    expanded ? subIssues.map(({ item }) => <span key={item.id}>{`nested ${item.id}`}</span>) : null,
 }));
 
 vi.mock("../../i18n", async () => {
@@ -222,5 +236,49 @@ describe("InboxList archive pagination", () => {
     render(<InboxList items={[]} view="archived" selectedKey="" onSelect={vi.fn()} onAction={vi.fn()} onLoadMore={onLoadMore} />);
     expect(onLoadMore).toHaveBeenCalledOnce();
     expect(screen.queryByText("No archived notifications")).toBeNull();
+  });
+});
+
+describe("InboxList sub-issues", () => {
+  const child = item("a-child");
+  const subIssues = new Map<string, NestedSubIssue[]>([
+    ["issue-a", [{ item: child, issue: { id: "issue-a-child", identifier: "MUL-2" } as Issue }]],
+  ]);
+
+  function renderNested(selectedKey: string) {
+    const onSelect = vi.fn();
+    const utils = render(
+      <InboxList
+        items={items}
+        subIssues={subIssues}
+        view="inbox"
+        selectedKey={selectedKey}
+        onSelect={onSelect}
+        onAction={vi.fn()}
+        onOpenArchived={vi.fn()}
+      />,
+    );
+    const scroller = utils.container.querySelector(".overflow-y-auto") as HTMLElement;
+    return { scroller, onSelect };
+  }
+
+  it("walks the arrow keys through nested rows", () => {
+    const { scroller, onSelect } = renderNested("issue-a");
+
+    press(scroller, "ArrowDown");
+
+    expect(screen.getByText("nested a-child")).toBeInTheDocument();
+    expect(onSelect).toHaveBeenCalledWith(child);
+    expect(scrollIntoView).toHaveBeenCalledWith({ index: 0 });
+  });
+
+  it("skips the nested rows of a collapsed parent", () => {
+    const { scroller, onSelect } = renderNested("issue-a");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle 1" }));
+    press(scroller, "ArrowDown");
+
+    expect(screen.queryByText("nested a-child")).toBeNull();
+    expect(onSelect).toHaveBeenCalledWith(items[1]);
   });
 });

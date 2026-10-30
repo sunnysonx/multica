@@ -8,7 +8,7 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { MulticaBleedMark } from "@multica/ui/components/common/multica-graphics";
 import { ApiError, errorCode } from "@multica/core/api";
@@ -50,6 +50,9 @@ import {
   useInboxFilters,
   useInboxFilterStore,
 } from "@multica/core/inbox/filter-store";
+import { useInboxDisplayStore } from "@multica/core/inbox/display-store";
+import { nestInboxSubIssues } from "@multica/core/inbox/hierarchy";
+import { childrenByParentsOptions } from "@multica/core/issues/queries";
 
 import { IssueDetail, issueHighlightMementoKey } from "../../issues/components/issue-detail";
 import { ActionShortcutKeycaps } from "../../common/shortcut-keycaps";
@@ -226,6 +229,22 @@ export function InboxPage() {
     setPrevInboxZeroCount(inboxZeroCount);
     setInboxZeroRises(prevInboxZeroCount > 0 && inboxZeroCount === 0);
   }
+  const nestSubIssues = useInboxDisplayStore((state) => state.hierarchy) && !isArchivedView;
+  // Keyed on every inbox issue rather than the filtered rows, so changing a
+  // filter does not refetch.
+  const inboxIssueIds = useMemo(
+    () => [...new Set(items.flatMap((item) => (item.issue_id ? [item.issue_id] : [])))].sort(),
+    [items],
+  );
+  const { data: childrenByParent } = useQuery({
+    ...childrenByParentsOptions(wsId, inboxIssueIds, queryClient),
+    enabled: nestSubIssues && inboxIssueIds.length > 0,
+    placeholderData: keepPreviousData,
+  });
+  const nestedItems = useMemo(
+    () => (nestSubIssues ? nestInboxSubIssues(visibleItems, childrenByParent) : null),
+    [nestSubIssues, visibleItems, childrenByParent],
+  );
   const selected = selectionItems.find((i) => (i.issue_id ?? i.id) === selectedKey) ?? null;
   const selectedInView = selectedOnPage ?? (isArchivedView ? lookupItems.find((i) => (i.issue_id ?? i.id) === selectedKey) : null);
   const selectionFilteredOut = !!selectedKey && !!selectedInView && !selected;
@@ -739,7 +758,8 @@ export function InboxPage() {
       }}
     >
       <InboxList
-        items={visibleItems}
+        items={nestedItems?.items ?? visibleItems}
+        subIssues={nestedItems?.subIssues}
         view={view}
         selectedKey={selectedKey}
         onLoadMore={isArchivedView && archiveQuery.hasNextPage ? loadNextArchivedPage : undefined}
