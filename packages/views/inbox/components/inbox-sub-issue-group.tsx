@@ -244,7 +244,7 @@ function SubIssueRow({
                     e.stopPropagation();
                     onMention();
                   }}
-                  className="hidden rounded-xs p-0.5 text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring [@media(hover:hover)]:group-hover/sub:inline-flex [@media(hover:hover)]:group-focus-within/sub:inline-flex"
+                  className="-my-px hidden rounded-xs p-0.5 text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring [@media(hover:hover)]:group-hover/sub:inline-flex [@media(hover:hover)]:group-focus-within/sub:inline-flex"
                 >
                   <AtSign className="size-3.5" />
                 </button>
