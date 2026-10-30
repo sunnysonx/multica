@@ -21,6 +21,12 @@
     "clear": "필터 지우기",
     "empty": "필터와 일치하는 알림이 없습니다"
   },
+  "hierarchy": {
+    "reply_placeholder": "상위 태스크에 답글...",
+    "send": "답글 보내기",
+    "mention": "답글에서 {{identifier}} 멘션",
+    "unread_count_other": "읽지 않음 {{count}}개"
+  },
   "context_menu": {
     "mark_read": "읽음으로 표시",
     "mark_unread": "읽지 않음으로 표시",

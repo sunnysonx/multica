@@ -13,9 +13,11 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Archive, ChevronRight, Inbox } from "@multica/ui/icons";
 import { isEditableShortcutTarget } from "@multica/core/shortcuts";
 import { isImeComposing } from "@multica/core/utils";
+import type { NestedSubIssue } from "@multica/core/inbox/hierarchy";
 import type { InboxItem } from "@multica/core/types";
 import type { InboxView } from "./inbox-view";
 import { InboxListItem } from "./inbox-list-item";
+import { InboxSubIssueGroup, InboxSubIssueToggle } from "./inbox-sub-issue-group";
 import { VirtuosoSeed, VIRTUOSO_SEED_COUNT } from "../../common/virtuoso-seed";
 import { useRestoredScrollOffset, useRestoredScrollRef } from "../../platform";
 import { useT } from "../../i18n";
@@ -25,6 +27,7 @@ import { useT } from "../../i18n";
 // is truthful from the first frame and a restored offset sticks. A row is
 // two text lines (body + caption) plus py-2.5.
 const INBOX_ROW_ESTIMATED_HEIGHT = 58;
+const NO_SUB_ISSUES: ReadonlyMap<string, NestedSubIssue[]> = new Map();
 
 /**
  * Scrollable, virtualized inbox notification list.
@@ -59,6 +62,7 @@ export function InboxList({
   onOpenArchived,
   emptyLabel,
   emptyAction,
+  subIssues = NO_SUB_ISSUES,
 }: {
   items: InboxItem[];
   view: InboxView;
@@ -71,6 +75,8 @@ export function InboxList({
   onOpenArchived: () => void;
   emptyLabel?: string;
   emptyAction?: ReactNode;
+  /** Sub-issue rows nested under a row, keyed by that row's issue id. */
+  subIssues?: ReadonlyMap<string, NestedSubIssue[]>;
 }) {
   const { t } = useT("inbox");
   // Virtuoso's `customScrollParent` wants the actual HTMLElement, not a ref.
@@ -92,6 +98,30 @@ export function InboxList({
   );
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const isArchivedView = view === "archived";
+  const [collapsedParents, setCollapsedParents] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleParent = useCallback((issueId: string) => {
+    setCollapsedParents((current) => {
+      const next = new Set(current);
+      if (!next.delete(issueId)) next.add(issueId);
+      return next;
+    });
+  }, []);
+  // Arrow keys walk every row on screen, nested ones included; `listIndex`
+  // is the Virtuoso entry that holds the row.
+  const navigableRows = useMemo(
+    () =>
+      items.flatMap((item, listIndex) => {
+        const nested =
+          item.issue_id && !collapsedParents.has(item.issue_id)
+            ? (subIssues.get(item.issue_id) ?? [])
+            : [];
+        return [
+          { item, listIndex },
+          ...nested.map((entry) => ({ item: entry.item, listIndex })),
+        ];
+      }),
+    [items, subIssues, collapsedParents],
+  );
 
   // Keyboard focus for the list lives on the scroll container, not on a row:
   // virtualization unmounts the row the user clicked as soon as it scrolls
@@ -131,8 +161,8 @@ export function InboxList({
     event.preventDefault();
     focusList();
 
-    const current = items.findIndex(
-      (item) => (item.issue_id ?? item.id) === selectedKey,
+    const current = navigableRows.findIndex(
+      ({ item }) => (item.issue_id ?? item.id) === selectedKey,
     );
     const step = event.key === "ArrowDown" ? 1 : -1;
     // Nothing selected yet: Down enters the list at the top, Up at the bottom.
@@ -140,18 +170,18 @@ export function InboxList({
       current < 0
         ? step === 1
           ? 0
-          : items.length - 1
-        : Math.min(Math.max(current + step, 0), items.length - 1);
+          : navigableRows.length - 1
+        : Math.min(Math.max(current + step, 0), navigableRows.length - 1);
     if (nextIndex === current) return;
-    const nextItem = items[nextIndex];
-    if (!nextItem) return;
+    const next = navigableRows[nextIndex];
+    if (!next) return;
 
     // Virtuoso's own scrollIntoView, never the DOM element's: the target row
     // may not be mounted, and the native call scrolls ancestors too. It is a
     // no-op while the row is already fully visible, so a selection moving
     // inside the viewport does not scroll the list.
-    virtuosoRef.current?.scrollIntoView({ index: nextIndex });
-    onSelect(nextItem);
+    virtuosoRef.current?.scrollIntoView({ index: next.listIndex });
+    onSelect(next.item);
   };
 
   // The entry into the archive sits below the last row and scrolls with the
@@ -219,15 +249,42 @@ export function InboxList({
   }
 
   const computeItemKey = (_index: number, item: InboxItem) => item.id;
-  const itemContent = (_index: number, item: InboxItem) => (
-    <InboxListItem
-      item={item}
-      view={view}
-      isSelected={(item.issue_id ?? item.id) === selectedKey}
-      onClick={() => selectItem(item)}
-      onAction={() => onAction(item.id)}
-    />
-  );
+  const itemContent = (_index: number, item: InboxItem) => {
+    const nested = item.issue_id ? subIssues.get(item.issue_id) : undefined;
+    const expanded = !!item.issue_id && !collapsedParents.has(item.issue_id);
+    const row = (
+      <InboxListItem
+        item={item}
+        view={view}
+        isSelected={(item.issue_id ?? item.id) === selectedKey}
+        onClick={() => selectItem(item)}
+        onAction={() => onAction(item.id)}
+        subIssueToggle={
+          nested && item.issue_id ? (
+            <InboxSubIssueToggle
+              count={nested.length}
+              expanded={expanded}
+              onToggle={() => toggleParent(item.issue_id!)}
+            />
+          ) : undefined
+        }
+      />
+    );
+    if (!nested) return row;
+    return (
+      <>
+        {row}
+        <InboxSubIssueGroup
+          parent={item}
+          subIssues={nested}
+          view={view}
+          expanded={expanded}
+          selectedKey={selectedKey}
+          onSelect={selectItem}
+        />
+      </>
+    );
+  };
 
   // While the callback ref hasn't handed the scroll element over yet (the first
   // render after a remount), seed a bounded slice of real rows so the list

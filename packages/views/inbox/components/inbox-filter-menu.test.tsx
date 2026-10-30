@@ -18,6 +18,7 @@ import {
   type InboxPriorityFilterSupport,
   useInboxFilterStore,
 } from "@multica/core/inbox/filter-store";
+import { useInboxDisplayStore } from "@multica/core/inbox/display-store";
 import type { InboxItem, IssueStatusEntry } from "@multica/core/types";
 import { renderWithI18n } from "../../test/i18n";
 import { InboxFilterMenu } from "./inbox-filter-menu";
@@ -135,6 +136,7 @@ async function openSubmenu(name: "From" | "Status" | "Priority") {
 
 beforeEach(() => {
   useInboxFilterStore.setState({ filtersByWorkspace: {} });
+  useInboxDisplayStore.setState({ hierarchy: false });
 });
 
 afterEach(() => {
@@ -312,6 +314,26 @@ describe("InboxFilterMenu", () => {
     fireEvent.click(screen.getByRole("button", { name: "Filter inbox" }));
     await screen.findByRole("menuitemcheckbox", { name: /Unread only/ });
     expect(screen.queryByRole("menuitemcheckbox", { name: /No agents working/ })).toBeNull();
+  });
+
+  it("toggles hierarchy without counting it as a filter", async () => {
+    renderMenu();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter inbox" }));
+    const hierarchy = await screen.findByRole("menuitemcheckbox", { name: "Hierarchy" });
+    expect(hierarchy).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(hierarchy);
+
+    expect(useInboxDisplayStore.getState().hierarchy).toBe(true);
+    expect(screen.getByRole("button", { name: "Filter inbox" })).toBeInTheDocument();
+  });
+
+  it("hides hierarchy in the archive", async () => {
+    renderMenu({ archived: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter inbox" }));
+    await screen.findByRole("menuitemcheckbox", { name: /Unread only/ });
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Hierarchy" })).toBeNull();
   });
 
   it("hides priority and clears its filter for a legacy response", async () => {
