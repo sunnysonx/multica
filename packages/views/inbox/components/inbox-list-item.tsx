@@ -195,11 +195,13 @@ export function InboxListItem({
           </div>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-caption ${showUnread ? "text-muted-foreground" : "text-muted-foreground"}`}>
-            <InboxDetailLabel item={item} />
-          </p>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             {subIssueToggle}
+            <p className={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-caption ${showUnread ? "text-muted-foreground" : "text-muted-foreground"}`}>
+              <InboxDetailLabel item={item} />
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
             {/* Badge only, no hover card (MUL-5189). "An agent is on this"
                 is worth showing while triaging; the card behind it adds only
                 elapsed time, which does not change whether you open the row.

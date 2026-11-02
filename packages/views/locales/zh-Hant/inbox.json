@@ -23,9 +23,10 @@
   },
   "hierarchy": {
     "reply_placeholder": "在父級任務中回覆...",
-    "send": "傳送回覆",
+    "sub_issue_count_other": "{{count}} 個子任務",
     "mention": "在回覆中提及 {{identifier}}",
-    "unread_count_other": "{{count}} 條未讀"
+    "unread_count_other": "{{count}} 條未讀",
+    "working_count_other": "{{count}} 個工作中"
   },
   "context_menu": {
     "mark_read": "標為已讀",
