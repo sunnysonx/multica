@@ -1,20 +1,28 @@
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { agentTaskSnapshotOptions } from "@multica/core/agents";
 import { buildIssueStatusCatalog } from "@multica/core/issue-statuses";
+import { useCommentDraftStore } from "@multica/core/issues/stores";
 import type { NestedSubIssue } from "@multica/core/inbox/hierarchy";
-import type { InboxItem, Issue } from "@multica/core/types";
+import type { AgentTask, InboxItem, Issue } from "@multica/core/types";
 import { renderWithI18n } from "../../test/i18n";
-import { InboxSubIssueGroup, linkSubIssueMentions } from "./inbox-sub-issue-group";
+import { InboxSubIssueGroup, InboxSubIssueToggle } from "./inbox-sub-issue-group";
 
-const createComment = vi.hoisted(() => ({
-  mutateAsync: vi.fn(),
-  reset: vi.fn(),
-  isPending: false,
-  isError: false,
+const createComment = vi.hoisted(() => vi.fn());
+const toastError = vi.hoisted(() => vi.fn());
+const composer = vi.hoisted(() => ({
+  props: null as null | {
+    issueId: string;
+    placeholder?: string;
+    onSubmit: (content: string, attachmentIds?: string[]) => Promise<string | boolean>;
+  },
 }));
 
+vi.mock("sonner", () => ({ toast: { error: toastError } }));
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
 vi.mock("@multica/core/issues/mutations", () => ({
-  useCreateComment: () => createComment,
+  useCreateComment: () => ({ mutateAsync: createComment }),
 }));
 vi.mock("@multica/core/issue-statuses/hooks", () => ({
   useIssueStatuses: () => buildIssueStatusCatalog(undefined),
@@ -24,6 +32,15 @@ vi.mock("../../issues/components", () => ({
 }));
 vi.mock("../../issues/components/issue-agent-activity-indicator", () => ({
   IssueAgentActivityIndicator: () => null,
+}));
+vi.mock("../../issues/components/comment-input", () => ({
+  CommentInput: (props: NonNullable<typeof composer.props>) => {
+    composer.props = props;
+    return <div data-testid="composer">{props.placeholder}</div>;
+  },
+}));
+vi.mock("../../agents/components/agent-avatar-stack", () => ({
+  AgentAvatarStack: ({ agentIds }: { agentIds: string[] }) => <span data-testid="agents">{agentIds.join(",")}</span>,
 }));
 vi.mock("./inbox-detail-label", () => ({
   InboxDetailLabel: ({ item }: { item: InboxItem }) => <>{item.body}</>,
@@ -67,35 +84,51 @@ const SUB_ISSUES = [
   subIssue("ios", "ACME-122", "Update the payment sheet to the new design"),
 ];
 
-function renderGroup(expanded = true, onSelect = vi.fn()) {
+function renderGroup({ expanded = true, tasks = [] as AgentTask[] } = {}) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  queryClient.setQueryData(agentTaskSnapshotOptions("ws-1").queryKey, tasks);
+  const onSelect = vi.fn();
   renderWithI18n(
-    <InboxSubIssueGroup
-      parent={parent}
-      subIssues={SUB_ISSUES}
-      view="inbox"
-      expanded={expanded}
-      selectedKey=""
-      onSelect={onSelect}
-    />,
+    <QueryClientProvider client={queryClient}>
+      <InboxSubIssueGroup
+        parent={parent}
+        subIssues={SUB_ISSUES}
+        view="inbox"
+        expanded={expanded}
+        selectedKey=""
+        onSelect={onSelect}
+      />
+    </QueryClientProvider>,
   );
-  return { onSelect, input: screen.queryByRole("textbox", { name: "Reply on the parent issue..." }) };
+  return { onSelect };
 }
 
 beforeEach(() => {
-  createComment.mutateAsync.mockReset().mockResolvedValue({});
-  createComment.isError = false;
+  createComment.mockReset().mockResolvedValue({ id: "comment-1" });
+  toastError.mockClear();
+  composer.props = null;
+  useCommentDraftStore.setState({ drafts: {} });
 });
 
 afterEach(() => {
   cleanup();
 });
 
-describe("linkSubIssueMentions", () => {
-  it("links only whole mentions of the listed sub-issues", () => {
-    const issues = [{ id: "uuid-1", identifier: "ACME-1" }];
-    expect(linkSubIssueMentions("@ACME-1 and @ACME-12, mail@ACME-1, @ACME-1.", issues)).toBe(
-      "[ACME-1](mention://issue/uuid-1) and @ACME-12, mail@ACME-1, [ACME-1](mention://issue/uuid-1).",
+describe("InboxSubIssueToggle", () => {
+  it("labels the sub-issue count and toggles without selecting the row", () => {
+    const onToggle = vi.fn();
+    const onRowClick = vi.fn();
+    renderWithI18n(
+      <div onClick={onRowClick}>
+        <InboxSubIssueToggle count={5} expanded={false} onToggle={onToggle} />
+      </div>,
     );
+
+    const toggle = screen.getByRole("button", { name: "5 sub-issues" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(onToggle).toHaveBeenCalledOnce();
+    expect(onRowClick).not.toHaveBeenCalled();
   });
 });
 
@@ -109,48 +142,53 @@ describe("InboxSubIssueGroup", () => {
     expect(onSelect).toHaveBeenCalledWith(SUB_ISSUES[1]!.item);
   });
 
-  it("sends a reply to the parent with mentioned sub-issues linked", async () => {
-    const { input } = renderGroup();
+  it("comments on the parent issue with the issue composer", async () => {
+    renderGroup();
+
+    expect(composer.props).toMatchObject({ issueId: "issue-parent", draftKey: "new:inbox:issue-parent", compact: true });
+    expect(screen.getByTestId("composer")).toHaveTextContent("Reply on the parent issue...");
+    await expect(composer.props!.onSubmit("Ship it", ["file-1"])).resolves.toBe("comment-1");
+    expect(createComment).toHaveBeenCalledWith(expect.objectContaining({ content: "Ship it", attachmentIds: ["file-1"] }));
+  });
+
+  it("reports a failed comment and keeps the draft", async () => {
+    createComment.mockRejectedValue(new Error("offline"));
+    renderGroup();
+
+    await expect(composer.props!.onSubmit("Ship it")).resolves.toBe(false);
+    expect(toastError).toHaveBeenCalledWith("offline");
+  });
+
+  it("adds a sub-issue mention to the parent's draft", () => {
+    useCommentDraftStore.getState().setDraft("new:inbox:issue-parent", "Please check");
+    renderGroup();
 
     fireEvent.click(screen.getByRole("button", { name: "Mention ACME-121 in the reply" }));
-    fireEvent.change(input!, { target: { value: `${(input as HTMLTextAreaElement).value}please merge` } });
-    fireEvent.keyDown(input!, { key: "Enter" });
 
-    await waitFor(() =>
-      expect(createComment.mutateAsync).toHaveBeenCalledWith({
-        content: "[ACME-121](mention://issue/issue-web) please merge",
-      }),
+    expect(useCommentDraftStore.getState().getDraft("new:inbox:issue-parent")).toBe(
+      "Please check [ACME-121](mention://issue/issue-web) ",
     );
-    await waitFor(() => expect(input).toHaveValue(""));
   });
 
-  it("keeps the draft when the reply fails", async () => {
-    createComment.mutateAsync.mockRejectedValue(new Error("offline"));
-    const { input } = renderGroup();
+  it("shows progress, working sub-issues and unread count when collapsed", () => {
+    renderGroup({
+      expanded: false,
+      tasks: [
+        { id: "task-1", issue_id: "issue-web", agent_id: "agent-builder", status: "running" } as AgentTask,
+        { id: "task-2", issue_id: "issue-other", agent_id: "agent-other", status: "running" } as AgentTask,
+      ],
+    });
 
-    fireEvent.change(input!, { target: { value: "status?" } });
-    fireEvent.keyDown(input!, { key: "Enter" });
-
-    await waitFor(() => expect(createComment.mutateAsync).toHaveBeenCalledTimes(1));
-    expect(input).toHaveValue("status?");
+    expect(screen.getByText(/0\/2 completed/)).toBeInTheDocument();
+    expect(screen.getAllByText("1 working").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("agents")).toHaveTextContent("agent-builder");
+    expect(screen.getByText(/1 unread/)).toBeInTheDocument();
+    expect(screen.queryByTestId("composer")).toBeNull();
   });
 
-  it("shows a failed reply with a retry", async () => {
-    createComment.isError = true;
-    const { input } = renderGroup();
-    fireEvent.change(input!, { target: { value: "status?" } });
-    createComment.mutateAsync.mockClear();
+  it("omits the working count when no agent runs on a sub-issue", () => {
+    renderGroup({ expanded: false });
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Failed to send reply");
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(createComment.mutateAsync).toHaveBeenCalledWith({ content: "status?" }));
-  });
-
-  it("shows the progress instead of the rows when collapsed", () => {
-    const { input } = renderGroup(false);
-
-    expect(screen.getByText("0/2 completed · 1 unread")).toBeInTheDocument();
-    expect(screen.queryByText("Preview is up")).toBeNull();
-    expect(input).toBeNull();
+    expect(screen.queryByText(/working/)).toBeNull();
   });
 });

@@ -262,9 +262,10 @@ describe("InboxList sub-issues", () => {
     return { scroller, onSelect };
   }
 
-  it("walks the arrow keys through nested rows", () => {
+  it("walks the arrow keys through the nested rows of an expanded parent", () => {
     const { scroller, onSelect } = renderNested("issue-a");
 
+    fireEvent.click(screen.getByRole("button", { name: "Toggle 1" }));
     press(scroller, "ArrowDown");
 
     expect(screen.getByText("nested a-child")).toBeInTheDocument();
@@ -272,10 +273,9 @@ describe("InboxList sub-issues", () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ index: 0 });
   });
 
-  it("skips the nested rows of a collapsed parent", () => {
+  it("starts collapsed and skips the nested rows", () => {
     const { scroller, onSelect } = renderNested("issue-a");
 
-    fireEvent.click(screen.getByRole("button", { name: "Toggle 1" }));
     press(scroller, "ArrowDown");
 
     expect(screen.queryByText("nested a-child")).toBeNull();

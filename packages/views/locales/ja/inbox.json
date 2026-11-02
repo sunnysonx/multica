@@ -23,9 +23,10 @@
   },
   "hierarchy": {
     "reply_placeholder": "親タスクに返信...",
-    "send": "返信を送信",
+    "sub_issue_count_other": "サブタスク {{count}} 件",
     "mention": "返信で {{identifier}} をメンション",
-    "unread_count_other": "未読 {{count}} 件"
+    "unread_count_other": "未読 {{count}} 件",
+    "working_count_other": "{{count}} 件作業中"
   },
   "context_menu": {
     "mark_read": "既読にする",

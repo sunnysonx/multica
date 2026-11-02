@@ -102,9 +102,9 @@ export function InboxList({
   );
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const isArchivedView = view === "archived";
-  const [collapsedParents, setCollapsedParents] = useState<ReadonlySet<string>>(() => new Set());
+  const [expandedParents, setExpandedParents] = useState<ReadonlySet<string>>(() => new Set());
   const toggleParent = useCallback((issueId: string) => {
-    setCollapsedParents((current) => {
+    setExpandedParents((current) => {
       const next = new Set(current);
       if (!next.delete(issueId)) next.add(issueId);
       return next;
@@ -116,7 +116,7 @@ export function InboxList({
     () =>
       items.flatMap((item, listIndex) => {
         const nested =
-          item.issue_id && !collapsedParents.has(item.issue_id)
+          item.issue_id && expandedParents.has(item.issue_id)
             ? (subIssues.get(item.issue_id) ?? [])
             : [];
         return [
@@ -124,7 +124,7 @@ export function InboxList({
           ...nested.map((entry) => ({ item: entry.item, listIndex })),
         ];
       }),
-    [items, subIssues, collapsedParents],
+    [items, subIssues, expandedParents],
   );
 
   // Keyboard focus for the list lives on the scroll container, not on a row:
@@ -229,7 +229,7 @@ export function InboxList({
   const computeItemKey = (_index: number, item: InboxItem) => item.id;
   const itemContent = (_index: number, item: InboxItem) => {
     const nested = item.issue_id ? subIssues.get(item.issue_id) : undefined;
-    const expanded = !!item.issue_id && !collapsedParents.has(item.issue_id);
+    const expanded = !!item.issue_id && expandedParents.has(item.issue_id);
     const row = (
       <InboxListItem
         item={item}

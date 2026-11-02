@@ -1,34 +1,32 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { agentTaskSnapshotOptions } from "@multica/core/agents";
+import { useWorkspaceId } from "@multica/core/hooks";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { issueBehavesAs } from "@multica/core/issues";
 import { useCreateComment } from "@multica/core/issues/mutations";
+import { useCommentDraftStore } from "@multica/core/issues/stores";
 import type { NestedSubIssue } from "@multica/core/inbox/hierarchy";
-import type { InboxItem, Issue } from "@multica/core/types";
-import { isImeComposing } from "@multica/core/utils";
-import { ArrowUp, AtSign, ChevronDown, ChevronRight } from "@multica/ui/icons";
-import { IconButton } from "@multica/ui/components/common/icon-button";
+import type { AgentTask, InboxItem, Issue } from "@multica/core/types";
+import { AtSign, ChevronDown, ChevronRight } from "@multica/ui/icons";
+import { ShimmerText } from "@multica/ui/components/common/shimmer-text";
+import { AgentAvatarStack } from "../../agents/components/agent-avatar-stack";
 import { DeferredTooltip } from "../../common/deferred-tooltip";
 import { handleRowActivationKey } from "../../common/row-actions-menu";
 import { StatusIcon } from "../../issues/components";
+import { CommentInput } from "../../issues/components/comment-input";
 import { IssueAgentActivityIndicator } from "../../issues/components/issue-agent-activity-indicator";
+import { selectIssueTasks } from "../../issues/surface/activity";
 import { useT } from "../../i18n";
 import { useInboxContextMenu } from "./inbox-context-menu";
 import { InboxDetailLabel } from "./inbox-detail-label";
 import { useTimeAgo } from "./inbox-list-item";
 import type { InboxView } from "./inbox-view";
 
-/** Turns `@MUL-12` typed in the reply into an issue mention for the listed sub-issues. */
-export function linkSubIssueMentions(text: string, issues: readonly Pick<Issue, "id" | "identifier">[]) {
-  return issues.reduce((content, issue) => {
-    const identifier = issue.identifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return content.replace(
-      new RegExp(`(^|\\s)@${identifier}(?![\\w-])`, "g"),
-      `$1[${issue.identifier}](mention://issue/${issue.id})`,
-    );
-  }, text);
-}
+const NOT_WORKING = { issueCount: 0, agentIds: [] as string[] };
 
 export function InboxSubIssueToggle({
   count,
@@ -39,27 +37,26 @@ export function InboxSubIssueToggle({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const { t: tIssues } = useT("issues");
+  const { t } = useT("inbox");
   const Chevron = expanded ? ChevronDown : ChevronRight;
   return (
     <button
       type="button"
       aria-expanded={expanded}
-      aria-label={tIssues(($) => $.table.toggle_sub_issues)}
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
       }}
       onKeyDown={(e) => e.stopPropagation()}
-      className="flex items-center gap-0.5 rounded-xs px-0.5 text-caption tabular-nums text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+      className="flex h-4.5 shrink-0 items-center gap-0.5 rounded-full bg-muted pl-0.5 pr-1.5 text-micro font-medium text-muted-foreground outline-none hover:bg-surface-selected hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
     >
       <Chevron className="size-3" />
-      {count}
+      {t(($) => $.hierarchy.sub_issue_count, { count })}
     </button>
   );
 }
 
-/** Sub-issue rows under their parent's inbox row, with a reply box for the parent. */
+/** Sub-issue rows under their parent's inbox row, with a comment box for the parent. */
 export function InboxSubIssueGroup({
   parent,
   subIssues,
@@ -77,10 +74,30 @@ export function InboxSubIssueGroup({
 }) {
   const { t } = useT("inbox");
   const { t: tIssues } = useT("issues");
-  const [draft, setDraft] = useState("");
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const createComment = useCreateComment(parent.issue_id ?? "");
+  const wsId = useWorkspaceId();
+  const parentIssueId = parent.issue_id ?? "";
+  const draftKey = `new:inbox:${parentIssueId}` as const;
+  const { mutateAsync: createComment } = useCreateComment(parentIssueId);
   const showUnread = view !== "archived";
+  const selectWorking = useCallback(
+    (snapshot: AgentTask[]) => {
+      const agentIds = new Set<string>();
+      let issueCount = 0;
+      for (const { issue } of subIssues) {
+        const { running } = selectIssueTasks(snapshot, issue.id);
+        if (running.length === 0) continue;
+        issueCount += 1;
+        for (const task of running) agentIds.add(task.agent_id);
+      }
+      return issueCount === 0 ? NOT_WORKING : { issueCount, agentIds: [...agentIds] };
+    },
+    [subIssues],
+  );
+  const { data: working = NOT_WORKING } = useQuery({
+    ...agentTaskSnapshotOptions(wsId),
+    select: selectWorking,
+    enabled: !expanded,
+  });
 
   if (!expanded) {
     const done = subIssues.filter(({ issue }) => issueBehavesAs(issue, "done")).length;
@@ -93,30 +110,44 @@ export function InboxSubIssueGroup({
             style={{ width: `${(done / subIssues.length) * 100}%` }}
           />
         </span>
-        <span className="truncate">
+        <span className="flex min-w-0 items-center gap-1 truncate">
           {tIssues(($) => $.detail.sub_issues_nav_progress, { done, total: subIssues.length })}
+          {working.issueCount > 0 && (
+            <>
+              <span aria-hidden="true">·</span>
+              <AgentAvatarStack agentIds={working.agentIds} size="xs" max={3} />
+              <ShimmerText active className="text-caption text-muted-foreground">
+                {t(($) => $.hierarchy.working_count, { count: working.issueCount })}
+              </ShimmerText>
+            </>
+          )}
           {unread > 0 && ` · ${t(($) => $.hierarchy.unread_count, { count: unread })}`}
         </span>
       </div>
     );
   }
 
+  // Writing to the draft store is how a mention reaches the open composer, and
+  // it keeps an unsent reply when the row scrolls out of the list.
   const mention = (issue: Issue) => {
-    setDraft((current) => `${current}${current && !/\s$/.test(current) ? " " : ""}@${issue.identifier} `);
-    inputRef.current?.focus();
+    const drafts = useCommentDraftStore.getState();
+    const current = drafts.getDraft(draftKey) ?? "";
+    const separator = current && !/\s$/.test(current) ? " " : "";
+    drafts.setDraft(draftKey, `${current}${separator}[${issue.identifier}](mention://issue/${issue.id}) `);
   };
 
-  const send = async () => {
-    const content = linkSubIssueMentions(
-      draft.trim(),
-      subIssues.map(({ issue }) => issue),
-    );
-    if (!content || createComment.isPending) return;
+  const submit = async (
+    content: string,
+    attachmentIds?: string[],
+    suppressAgentIds?: string[],
+    steerTaskIds?: string[],
+  ) => {
     try {
-      await createComment.mutateAsync({ content });
-      setDraft("");
-    } catch {
-      // The draft stays in place; the inline error offers the retry.
+      const comment = await createComment({ content, attachmentIds, suppressAgentIds, steerTaskIds });
+      return comment.id;
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : tIssues(($) => $.comment.send_failed));
+      return false;
     }
   };
 
@@ -134,48 +165,14 @@ export function InboxSubIssueGroup({
         />
       ))}
       {view !== "archived" && parent.issue_id && (
-        <div className="ml-1 mt-1 flex items-end gap-1 rounded-md border border-border bg-background px-2 py-1 focus-within:border-ring">
-          <textarea
-            ref={inputRef}
-            rows={1}
-            value={draft}
-            disabled={createComment.isPending}
+        <div className="ml-1 mt-1">
+          <CommentInput
+            issueId={parent.issue_id}
+            onSubmit={submit}
             placeholder={t(($) => $.hierarchy.reply_placeholder)}
-            aria-label={t(($) => $.hierarchy.reply_placeholder)}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              if (createComment.isError) createComment.reset();
-            }}
-            onKeyDown={(e) => {
-              // Plain Enter sends, like the chat composer; Shift+Enter breaks the line.
-              e.stopPropagation();
-              if (e.key !== "Enter" || e.shiftKey || isImeComposing(e)) return;
-              e.preventDefault();
-              void send();
-            }}
-            className="field-sizing-content max-h-32 min-h-6 min-w-0 flex-1 resize-none bg-transparent py-0.5 text-body outline-none placeholder:text-muted-foreground disabled:opacity-50"
+            draftKey={draftKey}
+            compact
           />
-          <IconButton
-            variant="ghost"
-            size="icon-xs"
-            label={t(($) => $.hierarchy.send)}
-            disabled={!draft.trim() || createComment.isPending}
-            onClick={() => void send()}
-          >
-            <ArrowUp className="size-3.5" />
-          </IconButton>
-        </div>
-      )}
-      {createComment.isError && (
-        <div role="alert" className="ml-1 mt-1 flex items-center gap-2 text-caption text-destructive">
-          {tIssues(($) => $.comment.send_reply_failed)}
-          <button
-            type="button"
-            onClick={() => void send()}
-            className="rounded-xs px-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-          >
-            {t(($) => $.list.retry)}
-          </button>
         </div>
       )}
     </div>
