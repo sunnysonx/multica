@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BotOff, CircleDot, Filter, Mail, RotateCcw, SignalHigh, UserRound } from "@multica/ui/icons";
+import { BotOff, CircleDot, Filter, ListTree, Mail, RotateCcw, SignalHigh, UserRound } from "@multica/ui/icons";
 import { PRIORITY_DISPLAY_ORDER } from "@multica/core/issues/config";
 import {
   filterInboxItems,
@@ -14,6 +14,7 @@ import {
   useInboxFilters,
   useInboxFilterStore,
 } from "@multica/core/inbox/filter-store";
+import { useInboxDisplayStore } from "@multica/core/inbox/display-store";
 import { useQuery } from "@tanstack/react-query";
 import { archivedInboxFacetsOptions } from "@multica/core/inbox/queries";
 import { useActorName } from "@multica/core/workspace/hooks";
@@ -101,6 +102,8 @@ export function InboxFilterMenu({
     (state) => state.toggleUnreadOnly,
   );
   const toggleIdleOnly = useInboxFilterStore((state) => state.toggleIdleOnly);
+  const hierarchy = useInboxDisplayStore((state) => state.hierarchy);
+  const toggleHierarchy = useInboxDisplayStore((state) => state.toggleHierarchy);
   const { getActorName, getActorInitials, getActorAvatarUrl } = useActorName();
   const clearFilters = useInboxFilterStore((state) => state.clearFilters);
   const clearPriorityFilters = useInboxFilterStore(
@@ -265,6 +268,15 @@ export function InboxFilterMenu({
                 {t(($) => $.filters.notification_count, { count: idleCount })}
               </span>
             )}
+          </DropdownMenuCheckboxItem>
+        )}
+        {!archived && (
+          <DropdownMenuCheckboxItem
+            checked={hierarchy}
+            onCheckedChange={toggleHierarchy}
+          >
+            <ListTree className="size-3.5" />
+            <span className="flex-1">{tIssues(($) => $.table.hierarchy)}</span>
           </DropdownMenuCheckboxItem>
         )}
         <DropdownMenuSeparator />

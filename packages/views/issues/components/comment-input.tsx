@@ -9,7 +9,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { contentReferencesAttachment, type AgentTask } from "@multica/core/types";
 import { useShortcut } from "@multica/core/shortcuts";
 import { ShortcutKeycaps } from "../../common/shortcut-keycaps";
-import { useCommentDraftStore } from "@multica/core/issues/stores";
+import { useCommentDraftStore, type CommentDraftKey } from "@multica/core/issues/stores";
 import { composeAnnotatedReply, hasReplyIntent } from "@multica/core/drafts/reply-annotation";
 import { ReplyAnnotations } from "./reply-annotations";
 import { useT } from "../../i18n";
@@ -31,6 +31,11 @@ interface CommentInputProps {
   /** Called after the server accepts the comment and the composer is cleared. */
   onAccepted?: (commentId: string) => void;
   onEditAnnotation?: (id: string) => boolean;
+  placeholder?: string;
+  /** Keeps this composer's draft apart from the issue page's own composer. */
+  draftKey?: CommentDraftKey;
+  /** One line with only the send button, for composers embedded in lists. */
+  compact?: boolean;
 }
 
 // A top-level comment belongs to no thread, so it takes a running turn by
@@ -39,8 +44,17 @@ function steerTopLevelByDefault(task: AgentTask): boolean {
   return !task.trigger_comment_id;
 }
 
-function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation }: CommentInputProps) {
+function CommentInput({
+  issueId,
+  onSubmit,
+  onAccepted,
+  onEditAnnotation,
+  placeholder,
+  draftKey = `new:${issueId}`,
+  compact = false,
+}: CommentInputProps) {
   const { t } = useT("issues");
+  const placeholderText = placeholder ?? t(($) => $.comment.leave_comment_placeholder);
   const { t: tEditor } = useT("editor");
   const sendShortcut = useShortcut("send");
   const editorRef = useRef<ContentEditorRef>(null);
@@ -52,7 +66,6 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation }: Comme
   // Quick actions in the `/` menu: picking one inserts the server-rendered
   // body so the user can edit before sending, instead of firing immediately.
   const quickActionMenu = useQuickActionMenu(issueId);
-  const draftKey = `new:${issueId}` as const;
   const [initialDraft] = useState(() =>
     useCommentDraftStore.getState().getDraft(draftKey),
   );
@@ -222,7 +235,13 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation }: Comme
   return (
     <div
       {...dropZoneProps}
-      className="relative flex flex-col rounded-lg bg-card pb-8 ring-1 ring-border"
+      className={cn(
+        "relative flex flex-col rounded-lg bg-card ring-1 ring-border",
+        compact ? "pr-9" : "pb-8",
+        compact &&
+          (recipients.length > 0 || triggerPreview.blocked.length > 0 || triggerPreview.hasAllMembersMention) &&
+          "pb-8",
+      )}
     >
       {attachmentsBlockSteer && <div className="px-3 pt-2">
         <SteerAttachmentNotice />
@@ -252,7 +271,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation }: Comme
           ref={editorRef}
           value={persistedDraft ?? content}
           onReady={lazy.onReady}
-          placeholder={t(($) => $.comment.leave_comment_placeholder)}
+          placeholder={placeholderText}
           onUpdate={(md) => {
             setContent(md);
             setIsEmpty(!md.trim());
@@ -282,7 +301,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation }: Comme
           data-testid="comment-composer-shell"
           role="button"
           tabIndex={0}
-          aria-label={t(($) => $.comment.leave_comment_placeholder)}
+          aria-label={placeholderText}
           className="flex-1 min-h-0 cursor-text px-3 py-2"
           onClick={() => lazy.activate()}
           onKeyDown={(e) => {
@@ -296,7 +315,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation }: Comme
               exact type metrics (line-height 1.625 from prose.css), so the
               shell→editor swap doesn't shift layout. */}
           <div className="rich-text-editor text-body">
-            <p className="text-muted-foreground">{t(($) => $.comment.leave_comment_placeholder)}</p>
+            <p className="text-muted-foreground">{placeholderText}</p>
           </div>
         </div>
       )}
@@ -310,11 +329,11 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation }: Comme
         />
       </div>
       <div className="absolute bottom-1 right-1.5 flex items-center gap-1">
-        <FileUploadButton
+        {!compact && <FileUploadButton
           size="sm"
           multiple
           onSelect={(file) => lazy.uploadOrQueue([file])}
-        />
+        />}
         {routing.restartTaskIds.length > 0 ? (
           <Button
             size="sm"

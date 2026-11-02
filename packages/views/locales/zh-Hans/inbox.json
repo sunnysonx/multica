@@ -21,6 +21,13 @@
     "clear": "清除筛选",
     "empty": "没有符合筛选条件的通知"
   },
+  "hierarchy": {
+    "reply_placeholder": "在父级任务中回复...",
+    "sub_issue_count_other": "{{count}} 个子任务",
+    "mention": "在回复中提及 {{identifier}}",
+    "unread_count_other": "{{count}} 条未读",
+    "working_count_other": "{{count}} 个工作中"
+  },
   "context_menu": {
     "mark_read": "标为已读",
     "mark_unread": "标为未读",

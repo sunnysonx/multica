@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { StatusIcon } from "../../issues/components";
 import {
@@ -46,6 +47,7 @@ export function InboxListItem({
   isSelected,
   onClick,
   onAction,
+  subIssueToggle,
 }: {
   item: InboxItem;
   view: InboxView;
@@ -54,6 +56,7 @@ export function InboxListItem({
   // Archive in the main list, unarchive in the archived one — the row action is
   // always the reversal of the current view, so the two lists share this row.
   onAction: () => void;
+  subIssueToggle?: ReactNode;
 }) {
   const { t } = useT("inbox");
   const timeAgo = useTimeAgo();
@@ -192,9 +195,12 @@ export function InboxListItem({
           </div>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-caption ${showUnread ? "text-muted-foreground" : "text-muted-foreground"}`}>
-            <InboxDetailLabel item={item} />
-          </p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            {subIssueToggle}
+            <p className={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-caption ${showUnread ? "text-muted-foreground" : "text-muted-foreground"}`}>
+              <InboxDetailLabel item={item} />
+            </p>
+          </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {/* Badge only, no hover card (MUL-5189). "An agent is on this"
                 is worth showing while triaging; the card behind it adds only

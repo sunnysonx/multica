@@ -21,6 +21,13 @@
     "clear": "清除篩選",
     "empty": "沒有符合篩選條件的通知"
   },
+  "hierarchy": {
+    "reply_placeholder": "在父級任務中回覆...",
+    "sub_issue_count_other": "{{count}} 個子任務",
+    "mention": "在回覆中提及 {{identifier}}",
+    "unread_count_other": "{{count}} 條未讀",
+    "working_count_other": "{{count}} 個工作中"
+  },
   "context_menu": {
     "mark_read": "標為已讀",
     "mark_unread": "標為未讀",

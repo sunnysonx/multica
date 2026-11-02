@@ -23,6 +23,16 @@
     "clear": "Clear filters",
     "empty": "No notifications match your filters"
   },
+  "hierarchy": {
+    "reply_placeholder": "Reply on the parent issue...",
+    "sub_issue_count_one": "{{count}} sub-issue",
+    "sub_issue_count_other": "{{count}} sub-issues",
+    "mention": "Mention {{identifier}} in the reply",
+    "unread_count_one": "{{count}} unread",
+    "unread_count_other": "{{count}} unread",
+    "working_count_one": "{{count}} working",
+    "working_count_other": "{{count}} working"
+  },
   "context_menu": {
     "mark_read": "Mark as read",
     "mark_unread": "Mark as unread",

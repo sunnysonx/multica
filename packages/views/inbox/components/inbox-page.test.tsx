@@ -2,8 +2,10 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { ApiError } from "@multica/core/api";
-import type { AgentTask, InboxItem } from "@multica/core/types";
+import type { AgentTask, InboxItem, Issue } from "@multica/core/types";
 import { useInboxFilterStore } from "@multica/core/inbox/filter-store";
+import { useInboxDisplayStore } from "@multica/core/inbox/display-store";
+import type { NestedSubIssue } from "@multica/core/inbox/hierarchy";
 import { InboxPage } from "./inbox-page";
 
 vi.mock("sonner", () => ({
@@ -17,7 +19,13 @@ vi.mock("react-resizable-panels", () => ({
 // The page runs two queries — the active list and the archived one. They are
 // told apart by the queryKey their options carry, so each test can stock the
 // two lists independently.
-const listData: { active: InboxItem[]; archived: InboxItem[]; lookup?: InboxItem[]; tasks: AgentTask[] } = {
+const listData: {
+  active: InboxItem[];
+  archived: InboxItem[];
+  lookup?: InboxItem[];
+  tasks: AgentTask[];
+  children?: Map<string, Issue[]>;
+} = {
   active: [],
   archived: [],
   tasks: [],
@@ -27,6 +35,7 @@ const queryCalls: Array<{ queryKey: readonly unknown[]; enabled?: boolean }> = [
 const lookupState = { isLoading: false, isError: false, refetch: vi.fn() };
 const queryClient = vi.hoisted(() => ({ setQueryData: vi.fn() }));
 vi.mock("@tanstack/react-query", () => ({
+  keepPreviousData: (previous: unknown) => previous,
   queryOptions: (options: unknown) => options,
   useQueryClient: () => queryClient,
   useQuery: (options: { queryKey: readonly unknown[]; enabled?: boolean }) => {
@@ -34,7 +43,9 @@ vi.mock("@tanstack/react-query", () => ({
     return ({
     data: options.queryKey.includes("archived")
       ? { items: listData.lookup ?? listData.archived, hasMore: false, nextCursor: null }
-      : options.queryKey.includes("agent-task-snapshot") ? listData.tasks : listData.active,
+      : options.queryKey.includes("agent-task-snapshot") ? listData.tasks
+      : options.queryKey.includes("children-by-parents") ? listData.children
+      : listData.active,
     isLoading: false,
     isError: false,
     refetch: vi.fn(),
@@ -192,16 +203,23 @@ vi.mock("./inbox-list", () => ({
     onSelect,
     emptyLabel,
     emptyAction,
+    subIssues,
   }: {
     items: InboxItem[];
     view: string;
     onSelect: (item: InboxItem) => void;
     emptyLabel?: string;
     emptyAction?: React.ReactNode;
+    subIssues?: ReadonlyMap<string, NestedSubIssue[]>;
   }) => (
     <div data-testid="list" data-view={view}>
       {items.map((i) => (
-        <button key={i.id} data-testid="row" onClick={() => onSelect(i)}>
+        <button
+          key={i.id}
+          data-testid="row"
+          data-nested={(i.issue_id && subIssues?.get(i.issue_id)?.map((entry) => entry.item.id).join(",")) || undefined}
+          onClick={() => onSelect(i)}
+        >
           {i.id}
         </button>
       ))}
@@ -280,6 +298,8 @@ function reset() {
   listData.archived = [];
   listData.lookup = undefined;
   listData.tasks = [];
+  listData.children = undefined;
+  useInboxDisplayStore.setState({ hierarchy: false });
   lookupState.isLoading = false;
   lookupState.isError = false;
   lookupState.refetch.mockClear();
@@ -518,6 +538,41 @@ describe("InboxPage", () => {
     render(<InboxPage />);
     expect(queryCalls.find((q) => q.queryKey.includes("list"))?.enabled).toBe(false);
     expect(queryCalls.find((q) => q.queryKey.includes("pages"))?.enabled).toBe(true);
+  });
+
+  it("nests sub-issues under their parent only while hierarchy is on", () => {
+    reset();
+    listData.active = [
+      item({ id: "child", issue_id: "issue-child" }),
+      item({ id: "other", issue_id: "issue-other" }),
+      item({ id: "parent", issue_id: "issue-parent" }),
+    ];
+    listData.children = new Map([
+      ["issue-parent", [{ id: "issue-child", parent_issue_id: "issue-parent" } as Issue]],
+    ]);
+    const flat = render(<InboxPage />);
+    expect(screen.getAllByTestId("row").map((row) => row.textContent)).toEqual(["child", "other", "parent"]);
+    expect(queryCalls.find((q) => q.queryKey.includes("children-by-parents"))?.enabled).toBe(false);
+    flat.unmount();
+
+    reset();
+    listData.active = [
+      item({ id: "child", issue_id: "issue-child" }),
+      item({ id: "other", issue_id: "issue-other" }),
+      item({ id: "parent", issue_id: "issue-parent" }),
+    ];
+    listData.children = new Map([
+      ["issue-parent", [{ id: "issue-child", parent_issue_id: "issue-parent" } as Issue]],
+    ]);
+    useInboxDisplayStore.setState({ hierarchy: true });
+    render(<InboxPage />);
+    const rows = screen.getAllByTestId("row");
+    expect(rows.map((row) => row.textContent)).toEqual(["parent", "other"]);
+    expect(rows[0]?.dataset.nested).toBe("child");
+    expect(queryCalls.find((q) => q.queryKey.includes("children-by-parents"))).toMatchObject({
+      enabled: true,
+      queryKey: expect.arrayContaining([["issue-child", "issue-other", "issue-parent"]]),
+    });
   });
 
   it("opens a deep-linked archive group outside the loaded pages with its comment anchor", () => {

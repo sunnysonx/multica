@@ -23,6 +23,16 @@
     "clear": "Effacer les filtres",
     "empty": "Aucune notification ne correspond à vos filtres"
   },
+  "hierarchy": {
+    "reply_placeholder": "Répondre sur la tâche parente...",
+    "sub_issue_count_one": "{{count}} sous-tâche",
+    "sub_issue_count_other": "{{count}} sous-tâches",
+    "mention": "Mentionner {{identifier}} dans la réponse",
+    "unread_count_one": "{{count}} non lue",
+    "unread_count_other": "{{count}} non lues",
+    "working_count_one": "{{count}} en cours",
+    "working_count_other": "{{count}} en cours"
+  },
   "context_menu": {
     "mark_read": "Marquer comme lu",
     "mark_unread": "Marquer comme non lu",
