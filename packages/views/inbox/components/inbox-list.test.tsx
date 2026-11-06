@@ -255,7 +255,6 @@ describe("InboxList sub-issues", () => {
         selectedKey={selectedKey}
         onSelect={onSelect}
         onAction={vi.fn()}
-        onOpenArchived={vi.fn()}
       />,
     );
     const scroller = utils.container.querySelector(".overflow-y-auto") as HTMLElement;

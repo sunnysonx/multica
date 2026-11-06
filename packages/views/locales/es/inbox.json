@@ -23,6 +23,16 @@
     "empty": "Ninguna notificación coincide con tus filtros",
     "no_agents_working": "No hay agentes trabajando"
   },
+  "hierarchy": {
+    "reply_placeholder": "Responder en la tarea principal...",
+    "sub_issue_count_one": "{{count}} subtarea",
+    "sub_issue_count_other": "{{count}} subtareas",
+    "mention": "Mencionar {{identifier}} en la respuesta",
+    "unread_count_one": "{{count}} sin leer",
+    "unread_count_other": "{{count}} sin leer",
+    "working_count_one": "{{count}} en curso",
+    "working_count_other": "{{count}} en curso"
+  },
   "context_menu": {
     "mark_read": "Marcar como leído",
     "mark_unread": "Marcar como no leído",
