@@ -53,6 +53,7 @@ import {
 import { useCommentCollapseStore, useCommentDraftStore } from "@multica/core/issues/stores";
 import { useT } from "../../i18n";
 import { CommentsFoldBar } from "./resolved-thread-bar";
+import { splitThreadRows, THREAD_REVEAL_STEP, THREAD_VISIBLE_REPLIES } from "./thread-reply-window";
 import { deriveThreadResolution } from "./thread-utils";
 import { RevisionConflictCompare } from "./revision-conflict-compare";
 import { InlineCommentRun, PlacedInlineCommentRun, useInlineCommentRunState, type InlineCommentRunState } from "./inline-comment-run";
@@ -1161,6 +1162,18 @@ function CommentCardImpl({
     ? orderThreadWithRuns(entry, resolutionReply ? [resolutionReply] : [], runs.filter((run) => !run.hasReply
       && (run.anchorCommentId === entry.id || run.anchorCommentId === replyResolutionId)))
     : orderThreadWithRuns(entry, allNestedReplies, runs);
+  const [shownReplyLimit, setShownReplyLimit] = useState(THREAD_VISIBLE_REPLIES);
+  const threadRowEntry = (row: TimelineEntry | ThreadRunSlot) => ("run" in row ? row.reply : row) ?? null;
+  const replyWindow = splitThreadRows(
+    threadRows,
+    shownReplyLimit,
+    (row) => "run" in row || !isDeletedComment(row),
+    highlightedCommentId ? threadRows.findIndex((row) => threadRowEntry(row)?.id === highlightedCommentId) : -1,
+  );
+  const hiddenReplies = replyWindow.hidden
+    .map(threadRowEntry)
+    .filter((reply): reply is TimelineEntry => reply !== null && !isDeletedComment(reply));
+  const shownThreadRows = hiddenReplies.length > 0 ? replyWindow.visible : threadRows;
 
   // Pin the root comment's header to the timeline's scroll parent while the
   // thread is open, so a LONG root comment keeps its author + actions visible
@@ -1518,7 +1531,17 @@ function CommentCardImpl({
                 </button>
               )}
               {/* Replies — chronological; the resolution keeps its place with a badge */}
-              {threadRows.map(renderThreadRow)}
+              {hiddenReplies.length > 0 && (
+                <div className="border-t border-border/50 px-4 max-md:px-3 py-2.5">
+                  <CommentsFoldBar
+                    replies={hiddenReplies}
+                    onExpand={() => setShownReplyLimit((limit) => limit + THREAD_REVEAL_STEP)}
+                  />
+                  {/* Jump targets for folded replies; the jump's highlight then unfolds the reply. */}
+                  {hiddenReplies.map((reply) => <span key={reply.id} id={`comment-${reply.id}`} aria-hidden className="block h-0" />)}
+                </div>
+              )}
+              {shownThreadRows.map(renderThreadRow)}
 
               {/* Reply input */}
               <div className="border-t border-border/50 px-4 max-md:px-3 py-2.5">
