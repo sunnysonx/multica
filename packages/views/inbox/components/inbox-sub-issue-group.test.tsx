@@ -84,7 +84,7 @@ const SUB_ISSUES = [
   subIssue("ios", "ACME-122", "Update the payment sheet to the new design"),
 ];
 
-function renderGroup({ expanded = true, tasks = [] as AgentTask[] } = {}) {
+function renderGroup({ expanded = true, tasks = [] as AgentTask[], subIssues = SUB_ISSUES } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   queryClient.setQueryData(agentTaskSnapshotOptions("ws-1").queryKey, tasks);
   const onSelect = vi.fn();
@@ -92,7 +92,7 @@ function renderGroup({ expanded = true, tasks = [] as AgentTask[] } = {}) {
     <QueryClientProvider client={queryClient}>
       <InboxSubIssueGroup
         parent={parent}
-        subIssues={SUB_ISSUES}
+        subIssues={subIssues}
         view="inbox"
         expanded={expanded}
         selectedKey=""
@@ -170,7 +170,23 @@ describe("InboxSubIssueGroup", () => {
     );
   });
 
-  it("shows progress, working sub-issues and unread count when collapsed", () => {
+  it("counts sub-issues per status when collapsed, in review first", () => {
+    renderGroup({
+      expanded: false,
+      subIssues: [
+        ...SUB_ISSUES,
+        subIssue("api", "ACME-123", "Add the refund endpoint", { issue_status: "in_review" }),
+        subIssue("docs", "ACME-124", "Document the refund flow", { issue_status: "in_review" }),
+      ],
+    });
+
+    const pills = screen.getAllByLabelText(/: \d+$/);
+    expect(pills.map((pill) => pill.getAttribute("aria-label"))).toEqual(["In Review: 2", "In Progress: 2"]);
+    expect(screen.getByText("1 new")).toBeInTheDocument();
+    expect(screen.queryByTestId("composer")).toBeNull();
+  });
+
+  it("shows the agents working on sub-issues when collapsed", () => {
     renderGroup({
       expanded: false,
       tasks: [
@@ -179,16 +195,13 @@ describe("InboxSubIssueGroup", () => {
       ],
     });
 
-    expect(screen.getByText(/0\/2 completed/)).toBeInTheDocument();
-    expect(screen.getAllByText("1 working").length).toBeGreaterThan(0);
     expect(screen.getByTestId("agents")).toHaveTextContent("agent-builder");
-    expect(screen.getByText(/1 unread/)).toBeInTheDocument();
-    expect(screen.queryByTestId("composer")).toBeNull();
+    expect(screen.getByTestId("agents")).not.toHaveTextContent("agent-other");
   });
 
-  it("omits the working count when no agent runs on a sub-issue", () => {
+  it("shows no agents when none runs on a sub-issue", () => {
     renderGroup({ expanded: false });
 
-    expect(screen.queryByText(/working/)).toBeNull();
+    expect(screen.queryByTestId("agents")).toBeNull();
   });
 });

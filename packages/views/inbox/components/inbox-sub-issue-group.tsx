@@ -6,13 +6,11 @@ import { toast } from "sonner";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
-import { issueBehavesAs } from "@multica/core/issues";
 import { useCreateComment } from "@multica/core/issues/mutations";
 import { useCommentDraftStore } from "@multica/core/issues/stores";
-import type { NestedSubIssue } from "@multica/core/inbox/hierarchy";
+import { countSubIssueStatuses, type NestedSubIssue } from "@multica/core/inbox/hierarchy";
 import type { AgentTask, InboxItem, Issue } from "@multica/core/types";
 import { AtSign, ChevronDown, ChevronRight } from "@multica/ui/icons";
-import { ShimmerText } from "@multica/ui/components/common/shimmer-text";
 import { AgentAvatarStack } from "../../agents/components/agent-avatar-stack";
 import { DeferredTooltip } from "../../common/deferred-tooltip";
 import { handleRowActivationKey } from "../../common/row-actions-menu";
@@ -26,7 +24,7 @@ import { InboxDetailLabel } from "./inbox-detail-label";
 import { useTimeAgo } from "./inbox-list-item";
 import type { InboxView } from "./inbox-view";
 
-const NOT_WORKING = { issueCount: 0, agentIds: [] as string[] };
+const NO_AGENTS: string[] = [];
 
 export function InboxSubIssueToggle({
   count,
@@ -56,6 +54,52 @@ export function InboxSubIssueToggle({
   );
 }
 
+/** One pill per status with its count; in review is tinted because it waits on the user. */
+function SubIssueStatusSummary({
+  subIssues,
+  workspaceId,
+  unread,
+  workingAgentIds,
+}: {
+  subIssues: NestedSubIssue[];
+  workspaceId: string;
+  unread: number;
+  workingAgentIds: string[];
+}) {
+  const { t } = useT("inbox");
+  const { statuses, categoryOf, colorOf, iconOf, labelOf } = useIssueStatuses(workspaceId);
+  const counts = countSubIssueStatuses(subIssues, statuses.map(({ key }) => key));
+  return (
+    <div className="ml-6 flex items-center gap-1.5 overflow-hidden whitespace-nowrap border-l border-border py-1 pl-3 text-caption text-muted-foreground">
+      {counts.map(({ status, count }) => (
+        <span
+          key={status}
+          title={`${labelOf(status)}: ${count}`}
+          aria-label={`${labelOf(status)}: ${count}`}
+          className={`flex h-5 shrink-0 items-center gap-1 rounded-full pl-1.5 pr-2 tabular-nums ${
+            status === "in_review" ? "bg-success/15 text-foreground" : "bg-muted"
+          }`}
+        >
+          <StatusIcon
+            status={status}
+            category={categoryOf(status)}
+            color={colorOf(status)}
+            icon={iconOf(status)}
+            className="size-3 shrink-0"
+          />
+          {count}
+        </span>
+      ))}
+      {workingAgentIds.length > 0 && (
+        <AgentAvatarStack agentIds={workingAgentIds} size="xs" max={3} />
+      )}
+      {unread > 0 && (
+        <span className="shrink-0 font-medium text-info">{t(($) => $.hierarchy.new_count, { count: unread })}</span>
+      )}
+    </div>
+  );
+}
+
 /** Sub-issue rows under their parent's inbox row, with a comment box for the parent. */
 export function InboxSubIssueGroup({
   parent,
@@ -82,48 +126,28 @@ export function InboxSubIssueGroup({
   const selectWorking = useCallback(
     (snapshot: AgentTask[]) => {
       const agentIds = new Set<string>();
-      let issueCount = 0;
       for (const { issue } of subIssues) {
-        const { running } = selectIssueTasks(snapshot, issue.id);
-        if (running.length === 0) continue;
-        issueCount += 1;
-        for (const task of running) agentIds.add(task.agent_id);
+        for (const task of selectIssueTasks(snapshot, issue.id).running) agentIds.add(task.agent_id);
       }
-      return issueCount === 0 ? NOT_WORKING : { issueCount, agentIds: [...agentIds] };
+      return agentIds.size === 0 ? NO_AGENTS : [...agentIds];
     },
     [subIssues],
   );
-  const { data: working = NOT_WORKING } = useQuery({
+  const { data: workingAgentIds = NO_AGENTS } = useQuery({
     ...agentTaskSnapshotOptions(wsId),
     select: selectWorking,
     enabled: !expanded,
   });
 
   if (!expanded) {
-    const done = subIssues.filter(({ issue }) => issueBehavesAs(issue, "done")).length;
     const unread = showUnread ? subIssues.filter(({ item }) => item.read !== true).length : 0;
     return (
-      <div className="ml-6 flex items-center gap-2 border-l border-border py-1 pl-3 text-caption text-muted-foreground">
-        <span className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted">
-          <span
-            className="block h-full rounded-full bg-info"
-            style={{ width: `${(done / subIssues.length) * 100}%` }}
-          />
-        </span>
-        <span className="flex min-w-0 items-center gap-1 truncate">
-          {tIssues(($) => $.detail.sub_issues_nav_progress, { done, total: subIssues.length })}
-          {working.issueCount > 0 && (
-            <>
-              <span aria-hidden="true">·</span>
-              <AgentAvatarStack agentIds={working.agentIds} size="xs" max={3} />
-              <ShimmerText active className="text-caption text-muted-foreground">
-                {t(($) => $.hierarchy.working_count, { count: working.issueCount })}
-              </ShimmerText>
-            </>
-          )}
-          {unread > 0 && ` · ${t(($) => $.hierarchy.unread_count, { count: unread })}`}
-        </span>
-      </div>
+      <SubIssueStatusSummary
+        subIssues={subIssues}
+        workspaceId={parent.workspace_id}
+        unread={unread}
+        workingAgentIds={workingAgentIds}
+      />
     );
   }
 

@@ -71,3 +71,35 @@ export function nestInboxSubIssues(
 
   return subIssues.size === 0 ? { items, subIssues } : { items: topLevel, subIssues };
 }
+
+export interface SubIssueStatusCount {
+  status: string;
+  count: number;
+}
+
+// Statuses that wait on a person lead, so the summary shows them first.
+const STATUSES_NEEDING_ATTENTION = ["in_review", "blocked"];
+
+/**
+ * Counts a group's sub-issues per status, in the order the summary shows them:
+ * statuses that need attention first, then the workspace's status order.
+ */
+export function countSubIssueStatuses(
+  subIssues: readonly NestedSubIssue[],
+  statusOrder: readonly string[],
+): SubIssueStatusCount[] {
+  const counts = new Map<string, number>();
+  for (const { item, issue } of subIssues) {
+    const status = item.issue_status ?? issue.status;
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  const rank = (status: string) => {
+    const attention = STATUSES_NEEDING_ATTENTION.indexOf(status);
+    if (attention >= 0) return attention;
+    const position = statusOrder.indexOf(status);
+    return STATUSES_NEEDING_ATTENTION.length + (position >= 0 ? position : statusOrder.length);
+  };
+  return [...counts]
+    .map(([status, count]) => ({ status, count }))
+    .sort((a, b) => rank(a.status) - rank(b.status));
+}

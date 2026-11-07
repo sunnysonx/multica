@@ -25,8 +25,7 @@
     "reply_placeholder": "상위 태스크에 답글...",
     "sub_issue_count_other": "하위 태스크 {{count}}개",
     "mention": "답글에서 {{identifier}} 멘션",
-    "unread_count_other": "읽지 않음 {{count}}개",
-    "working_count_other": "{{count}}개 작업 중"
+    "new_count_other": "새 항목 {{count}}개"
   },
   "context_menu": {
     "mark_read": "읽음으로 표시",

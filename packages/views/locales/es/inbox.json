@@ -28,10 +28,8 @@
     "sub_issue_count_one": "{{count}} subtarea",
     "sub_issue_count_other": "{{count}} subtareas",
     "mention": "Mencionar {{identifier}} en la respuesta",
-    "unread_count_one": "{{count}} sin leer",
-    "unread_count_other": "{{count}} sin leer",
-    "working_count_one": "{{count}} en curso",
-    "working_count_other": "{{count}} en curso"
+    "new_count_one": "{{count}} nueva",
+    "new_count_other": "{{count}} nuevas"
   },
   "context_menu": {
     "mark_read": "Marcar como leído",

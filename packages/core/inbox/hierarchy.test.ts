@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { InboxItem, Issue } from "../types";
-import { nestInboxSubIssues } from "./hierarchy";
+import { countSubIssueStatuses, nestInboxSubIssues } from "./hierarchy";
 
 function row(issueId: string | null, id = `row-${issueId}`): InboxItem {
   return {
@@ -94,5 +94,35 @@ describe("nestInboxSubIssues", () => {
     );
     expect(result.items).toBe(items);
     expect(result.subIssues.size).toBe(0);
+  });
+});
+
+describe("countSubIssueStatuses", () => {
+  const STATUS_ORDER = ["backlog", "todo", "in_progress", "in_review", "done", "blocked", "cancelled"];
+  const sub = (id: string, status: string | null, issueStatus = "todo") => ({
+    item: { ...row(id), issue_status: status },
+    issue: { ...issue(id, "parent"), status: issueStatus } as Issue,
+  });
+
+  it("counts per status with in review and blocked first, then the workspace order", () => {
+    const counts = countSubIssueStatuses(
+      [sub("a", "done"), sub("b", "in_review"), sub("c", "in_progress"), sub("d", "in_review"), sub("e", "blocked")],
+      STATUS_ORDER,
+    );
+    expect(counts).toEqual([
+      { status: "in_review", count: 2 },
+      { status: "blocked", count: 1 },
+      { status: "in_progress", count: 1 },
+      { status: "done", count: 1 },
+    ]);
+  });
+
+  it("falls back to the issue status when the inbox row has none", () => {
+    expect(countSubIssueStatuses([sub("a", null, "done")], STATUS_ORDER)).toEqual([{ status: "done", count: 1 }]);
+  });
+
+  it("puts a status missing from the workspace order last", () => {
+    const counts = countSubIssueStatuses([sub("a", "qa_ready"), sub("b", "todo")], STATUS_ORDER);
+    expect(counts.map(({ status }) => status)).toEqual(["todo", "qa_ready"]);
   });
 });

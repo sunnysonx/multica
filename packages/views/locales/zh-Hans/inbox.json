@@ -25,8 +25,7 @@
     "reply_placeholder": "在父级任务中回复...",
     "sub_issue_count_other": "{{count}} 个子任务",
     "mention": "在回复中提及 {{identifier}}",
-    "unread_count_other": "{{count}} 条未读",
-    "working_count_other": "{{count}} 个工作中"
+    "new_count_other": "{{count}} 条新消息"
   },
   "context_menu": {
     "mark_read": "标为已读",

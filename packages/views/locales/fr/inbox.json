@@ -28,10 +28,8 @@
     "sub_issue_count_one": "{{count}} sous-tâche",
     "sub_issue_count_other": "{{count}} sous-tâches",
     "mention": "Mentionner {{identifier}} dans la réponse",
-    "unread_count_one": "{{count}} non lue",
-    "unread_count_other": "{{count}} non lues",
-    "working_count_one": "{{count}} en cours",
-    "working_count_other": "{{count}} en cours"
+    "new_count_one": "{{count}} nouvelle",
+    "new_count_other": "{{count}} nouvelles"
   },
   "context_menu": {
     "mark_read": "Marquer comme lu",
